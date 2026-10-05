@@ -141,6 +141,19 @@ This prevents a dead-end alternative from becoming the main narrative merely
 because it was declared first. The selected edge and deterministic
 single-outgoing continuations are marked straight and routed before alternatives.
 
+A gateway whose outgoing spine edge is already selected keeps that edge as its
+only straight alternative; its other branches do not compete for band `0`.
+
+With the opt-in `preferDominantBranch` layout option, an exclusive or
+event-based gateway applies one more rule between steps 2 and 3: when one
+candidate's forward reach (nodes reachable without re-entering the spine or the
+gateway) is disjoint from every other candidate's reach, at least
+`DOMINANT_BRANCH_RATIO` (2) times as large and at least `DOMINANT_BRANCH_MARGIN`
+(3) nodes larger, that candidate continues the spine. Alternatives that rejoin
+it keep declaration order, so split/join diamonds are unaffected; a short
+exception path that ends or loops back cannot displace the main narrative.
+Child scopes and participant processes inherit the option.
+
 When unobstructed, a spine edge is one horizontal segment from the source's
 right center to the target's left center.
 

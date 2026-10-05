@@ -63,6 +63,7 @@ export type ProcessLayoutResult = {
 
 export type ProcessLayoutOptions = {
   expandedIds: Set<string>;
+  preferDominantBranch: boolean;
   participantProcess: boolean;
   messageFlowEndpointDirections: Map<BpmnElement, Set<string>>;
   layoutScope: (
@@ -110,6 +111,7 @@ export type CollaborationLayoutStep = (
 
 export type CollaborationLayoutOptions = {
   expandedIds: Set<string>;
+  preferDominantBranch: boolean;
 };
 
 export type CollaborationLayoutContext = {

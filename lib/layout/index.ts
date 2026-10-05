@@ -43,7 +43,8 @@ class LayoutEngine {
     this.warnings = [];
   }
 
-  async layoutProcess(xml: string) {
+  async layoutProcess(xml: string, options: LayoutProcessOptions = {}) {
+    const preferDominantBranch = options.preferDominantBranch === true;
     this.warnings = [];
     const parsed = await this.moddle.fromXML(xml);
     const definitions = parsed.rootElement;
@@ -64,13 +65,17 @@ class LayoutEngine {
 
     if (is(root, 'bpmn:Collaboration')) {
       const result = layoutCollaboration(root, {
-        expandedIds: this.expandedIds
+        expandedIds: this.expandedIds,
+        preferDominantBranch
       });
 
       layout = result.layout;
       this.warnings.push(...result.warnings);
     } else {
-      const result = layoutProcessScope(root, { expandedIds: this.expandedIds });
+      const result = layoutProcessScope(root, {
+        expandedIds: this.expandedIds,
+        preferDominantBranch
+      });
 
       layout = result.layout;
       this.warnings.push(...result.warnings);
@@ -157,8 +162,21 @@ class LayoutEngine {
   }
 }
 
-export function layoutProcess(xml: string) {
-  return new LayoutEngine().layoutProcess(xml);
+/**
+ * Opt-in layout behaviors. All default to the standard layout contract.
+ */
+export type LayoutProcessOptions = {
+
+  /**
+   * At exclusive and event-based gateways whose alternatives never rejoin,
+   * keep the branch that carries clearly more of the process on the spine,
+   * even when a short exception path (dead end or loop back) is declared first.
+   */
+  preferDominantBranch?: boolean;
+};
+
+export function layoutProcess(xml: string, options: LayoutProcessOptions = {}) {
+  return new LayoutEngine().layoutProcess(xml, options);
 }
 
 function validateInputVisuals(

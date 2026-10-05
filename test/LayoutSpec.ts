@@ -302,6 +302,70 @@ describe('Layout', function(this: SuiteContext) {
 
   describe('Layout behavior', function() {
 
+    describe('preferDominantBranch', function() {
+
+      // An exclusive decision whose exception path (shortage → backorder end,
+      // or loop back to picking) is declared before the main path.
+      const EXCEPTION_FIRST = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_1">
+    <bpmn:startEvent id="Start" />
+    <bpmn:task id="Pick" />
+    <bpmn:exclusiveGateway id="Available" />
+    <bpmn:task id="Shortage" />
+    <bpmn:exclusiveGateway id="Resolution" />
+    <bpmn:endEvent id="Backordered" />
+    <bpmn:task id="Pack" />
+    <bpmn:task id="Check" />
+    <bpmn:task id="Weigh" />
+    <bpmn:task id="Label" />
+    <bpmn:task id="Handover" />
+    <bpmn:endEvent id="Shipped" />
+    <bpmn:sequenceFlow id="F1" sourceRef="Start" targetRef="Pick" />
+    <bpmn:sequenceFlow id="F2" sourceRef="Pick" targetRef="Available" />
+    <bpmn:sequenceFlow id="No" sourceRef="Available" targetRef="Shortage" />
+    <bpmn:sequenceFlow id="F3" sourceRef="Shortage" targetRef="Resolution" />
+    <bpmn:sequenceFlow id="Backorder" sourceRef="Resolution" targetRef="Backordered" />
+    <bpmn:sequenceFlow id="Substitute" sourceRef="Resolution" targetRef="Pick" />
+    <bpmn:sequenceFlow id="Yes" sourceRef="Available" targetRef="Pack" />
+    <bpmn:sequenceFlow id="F4" sourceRef="Pack" targetRef="Check" />
+    <bpmn:sequenceFlow id="F5" sourceRef="Check" targetRef="Weigh" />
+    <bpmn:sequenceFlow id="F6" sourceRef="Weigh" targetRef="Label" />
+    <bpmn:sequenceFlow id="F7" sourceRef="Label" targetRef="Handover" />
+    <bpmn:sequenceFlow id="F8" sourceRef="Handover" targetRef="Shipped" />
+  </bpmn:process>
+</bpmn:definitions>`;
+
+      async function centerYs(options?: { preferDominantBranch?: boolean }) {
+        const { xml } = await layoutProcessResult(EXCEPTION_FIRST, options);
+        const rootElement = await readLayoutDiagram(xml);
+
+        return new RequiredMap(rootElement.diagrams[0].plane.planeElement
+          .filter(element => element.$instanceOf('bpmndi:BPMNShape'))
+          .map(element => [
+            element.bpmnElement.id,
+            element.bounds.y + element.bounds.height / 2
+          ]));
+      }
+
+      it('should keep declaration order by default', async function() {
+        const y = await centerYs();
+
+        assert.strictEqual(y.get('Shortage'), y.get('Pick'));
+        assert.notStrictEqual(y.get('Pack'), y.get('Pick'));
+      });
+
+      it('should keep the dominant non-rejoining branch on the spine', async function() {
+        const y = await centerYs({ preferDominantBranch: true });
+
+        for (const id of [ 'Available', 'Pack', 'Check', 'Weigh', 'Label', 'Handover', 'Shipped' ]) {
+          assert.strictEqual(y.get(id), y.get('Pick'), `${ id } stays on the spine`);
+        }
+
+        assert.notStrictEqual(y.get('Shortage'), y.get('Pick'));
+      });
+    });
+
     it('should route self-loops into the left side', async function() {
       const xml = fs.readFileSync(path.join(fixturesDirectory, 'scenario.self-loop.bpmn'), 'utf8');
       const output = await layoutProcess(xml);

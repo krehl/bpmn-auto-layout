@@ -46,7 +46,12 @@ export function layoutProcessScope(
       childScope: BpmnElement,
       childOptions: Partial<ProcessLayoutOptions> = {}
   ) => {
-    return layoutProcessScope(childScope, childOptions);
+
+    // Child scopes (sub-processes) inherit opt-in layout behaviors.
+    return layoutProcessScope(childScope, {
+      preferDominantBranch: options.preferDominantBranch,
+      ...childOptions
+    });
   };
   const context = createProcessLayoutContext(scope, {
     ...options,
@@ -68,6 +73,7 @@ function createProcessLayoutContext(
     scope: BpmnElement,
     {
       expandedIds = new Set<string>(),
+      preferDominantBranch = false,
       participantProcess = false,
       messageFlowEndpointDirections = new Map<BpmnElement, Set<string>>(),
       layoutScope
@@ -77,6 +83,7 @@ function createProcessLayoutContext(
     scope,
     options: {
       expandedIds,
+      preferDominantBranch,
       participantProcess,
       messageFlowEndpointDirections,
       layoutScope

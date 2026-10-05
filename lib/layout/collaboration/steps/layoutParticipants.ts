@@ -52,6 +52,7 @@ export function layoutParticipants(
 
     const processResult = layoutProcessScope(process, {
       expandedIds,
+      preferDominantBranch: context.options.preferDominantBranch,
       participantProcess: true,
       messageFlowEndpointDirections: endpointDirections
     });

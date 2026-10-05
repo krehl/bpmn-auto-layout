@@ -45,13 +45,15 @@ export function layoutCollaboration(
 function createCollaborationLayoutContext(
     collaboration: BpmnElement,
     {
-      expandedIds = new Set<string>()
+      expandedIds = new Set<string>(),
+      preferDominantBranch = false
     }: Partial<CollaborationLayoutOptions>
 ): CollaborationLayoutContext {
   return {
     collaboration,
     options: {
-      expandedIds
+      expandedIds,
+      preferDominantBranch
     },
     participants: {
       layouts: new Map(),

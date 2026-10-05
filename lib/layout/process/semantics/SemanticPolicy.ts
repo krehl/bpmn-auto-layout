@@ -99,7 +99,8 @@ export function createSemanticPolicy(
     records: FlowRecord[],
     graphEdges: FlowEdge[],
     boundaryEdges: BoundaryEdge[],
-    allRecords: LayoutRecord[]
+    allRecords: LayoutRecord[],
+    { preferDominantBranch = false }: { preferDominantBranch?: boolean } = {}
 ): SemanticPolicy {
   const {
     allElementsDocumentIndex,
@@ -133,13 +134,15 @@ export function createSemanticPolicy(
     graphEdges,
     outgoing,
     edgeOrder,
-    components
+    components,
+    preferDominantBranch
   );
   const straightEdges = selectStraightEdges(
     records,
     outgoing,
     edgeOrder,
-    spine
+    spine,
+    preferDominantBranch
   );
   const bands = assignSemanticBands(
     records,
@@ -293,7 +296,8 @@ function selectSemanticSpine(
     graphEdges: FlowEdge[],
     outgoing: OutgoingEdges,
     edgeOrder: EdgeOrder,
-    components: Map<FlowNode, number>
+    components: Map<FlowNode, number>,
+    preferDominantBranch: boolean
 ): Set<FlowEdge> {
   const spine = new Set<FlowEdge>();
   const starts = records.filter(record => is(record.element, 'bpmn:StartEvent'))
@@ -350,7 +354,8 @@ function selectSemanticSpine(
         candidates,
         edgeOrder,
         visited,
-        outgoing
+        outgoing,
+        preferDominantBranch
       );
 
       if (!next) {
@@ -369,20 +374,26 @@ function selectStraightEdges(
     records: FlowRecord[],
     outgoing: OutgoingEdges,
     edgeOrder: EdgeOrder,
-    spine: Set<FlowEdge>
+    spine: Set<FlowEdge>,
+    preferDominantBranch: boolean
 ): Set<FlowEdge> {
   const straightEdges = new Set<FlowEdge>(spine);
 
   for (const record of records) {
     const candidates = outgoing.get(record.element) || [];
 
-    if (is(record.element, 'bpmn:Gateway') && candidates.length > 1) {
+    // A spine gateway already continues straight along its spine edge; a
+    // second straight edge would compete with it for the spine band.
+    const continuesSpine = candidates.some(edge => spine.has(edge));
+
+    if (is(record.element, 'bpmn:Gateway') && candidates.length > 1 && !continuesSpine) {
       const primaryEdge = selectPrimaryEdge(
         record.element,
         candidates,
         edgeOrder,
         new Set<FlowNode>(),
-        outgoing
+        outgoing,
+        preferDominantBranch
       );
 
       if (primaryEdge) {
@@ -862,7 +873,8 @@ function selectPrimaryEdge(
     edges: FlowEdge[],
     edgeOrder: EdgeOrder,
     visited: Set<FlowNode> = new Set(),
-    outgoing: OutgoingEdges = new Map()
+    outgoing: OutgoingEdges = new Map(),
+    preferDominantBranch = false
 ): FlowEdge | null {
   if (!edges.length) {
     return null;
@@ -877,7 +889,94 @@ function selectPrimaryEdge(
   const preferred = endReaching.length ? endReaching : candidates;
 
   return preferred.find(edge => edge === defaultEdge) ||
+    (preferDominantBranch ? selectDominantBranch(node, preferred, visited, outgoing) : null) ||
     [ ...preferred ].sort((a, b) => (edgeOrder.get(a) ?? 0) - (edgeOrder.get(b) ?? 0))[0] || null;
+}
+
+/**
+ * Minimum ratio by which a branch's forward reach must exceed every other
+ * candidate's to override declaration order.
+ */
+const DOMINANT_BRANCH_RATIO = 2;
+
+/**
+ * Minimum number of nodes by which the dominant branch must exceed every other
+ * candidate, so tiny branch sets (two nodes against one) never reorder a split.
+ */
+const DOMINANT_BRANCH_MARGIN = 3;
+
+/**
+ * Pick the branch that carries clearly more of the remaining process, but only
+ * when the alternatives never rejoin it.
+ *
+ * Each candidate's reach is the set of nodes it leads to without passing
+ * through the branching node or already selected spine nodes. If the largest
+ * reach is disjoint from every other candidate's reach — the alternatives dead
+ * end or loop back into already placed flow — and dominates by
+ * `DOMINANT_BRANCH_RATIO` and `DOMINANT_BRANCH_MARGIN`, it continues the spine. Reconverging branches
+ * (splits that join again) keep declaration order, so a short exception path
+ * cannot displace the main narrative merely because it was declared first,
+ * while ordinary split/join diamonds stay unchanged.
+ */
+function selectDominantBranch(
+    node: FlowNode,
+    edges: FlowEdge[],
+    visited: Set<FlowNode>,
+    outgoing: OutgoingEdges
+): FlowEdge | null {
+
+  // Only decisions have an exception path; forks and implicit splits run all
+  // branches, so none of them is the "main" narrative.
+  if (edges.length < 2 ||
+      !(is(node, 'bpmn:ExclusiveGateway') || is(node, 'bpmn:EventBasedGateway'))) {
+    return null;
+  }
+
+  const reach = edges.map(edge => {
+    return {
+      edge,
+      nodes: collectForwardReach(edge.targetRef, node, visited, outgoing)
+    };
+  }).sort((a, b) => b.nodes.size - a.nodes.size);
+  const [ best, ...others ] = reach;
+  const largestOther = Math.max(...others.map(other => other.nodes.size), 1);
+
+  if (best.nodes.size < DOMINANT_BRANCH_RATIO * largestOther ||
+      best.nodes.size - largestOther < DOMINANT_BRANCH_MARGIN) {
+    return null;
+  }
+
+  const reconverges = others.some(other => {
+    return [ ...other.nodes ].some(candidate => best.nodes.has(candidate));
+  });
+
+  return reconverges ? null : best.edge;
+}
+
+function collectForwardReach(
+    start: FlowNode,
+    branchNode: FlowNode,
+    visited: Set<FlowNode>,
+    outgoing: OutgoingEdges
+): Set<FlowNode> {
+  const seen = new Set<FlowNode>();
+  const stack = [ start ];
+
+  while (stack.length) {
+    const current = stack.pop();
+
+    if (!current || current === branchNode || visited.has(current) || seen.has(current)) {
+      continue;
+    }
+
+    seen.add(current);
+
+    for (const edge of outgoing.get(current) || []) {
+      stack.push(edge.targetRef);
+    }
+  }
+
+  return seen;
 }
 
 function canReachEndEvent(
