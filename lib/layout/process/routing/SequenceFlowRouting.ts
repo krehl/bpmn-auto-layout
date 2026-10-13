@@ -257,19 +257,32 @@ function tryPreferredConnectionRoutes(routing: Routing): MaybeRoute {
 
 function tryDirectRoute({
   end,
+  flow,
   isBack,
+  routedConnections,
   router,
+  shapes,
   start
 }: Routing): MaybeRoute {
-  if (
-    !isBack &&
-    start.y === end.y &&
-    router.isClear([ start, end ])
-  ) {
+  if (isBack || start.y !== end.y) {
+    return null;
+  }
+
+  if (router.isClear([ start, end ])) {
     return [ start, end ];
   }
 
-  return null;
+  // Aligned shapes: one straight segment crossing other flows at right angles
+  // reads better than a detour that threads between them without crossing.
+  const crossingRouter = createSequenceFlowRouter(
+    shapes,
+    flow.sourceRef,
+    flow.targetRef,
+    routedConnections,
+    { allowPerpendicularCrossings: true }
+  );
+
+  return crossingRouter.isClear([ start, end ]) ? [ start, end ] : null;
 }
 
 function tryBranchRoute(routing: Routing): MaybeRoute {
@@ -387,6 +400,53 @@ function tryCrossBandRoute(routing: Routing): MaybeRoute {
 
   if (router.isClear(transposedRoute)) {
     return transposedRoute;
+  }
+
+  return findSideChannelRoute(routing);
+}
+
+/**
+ * A forward cross-band flow whose vertical docks are blocked (e.g. a shape sits
+ * directly above or below the target): leave the source's right side, change
+ * bands in a free vertical channel between the two shapes, and enter the
+ * target's left side at its center. Channels are tried from the middle of the
+ * gap outwards.
+ */
+function findSideChannelRoute({
+  router,
+  source,
+  sourceCenterY,
+  target,
+  targetCenterY
+}: Routing): MaybeRoute {
+  const left = source.x + source.width;
+  const right = target.x;
+
+  if (right - left < 2 * ROUTING_MARGIN) {
+    return null;
+  }
+
+  const middle = Math.round((left + right) / 2);
+  const start = point(left, sourceCenterY);
+  const end = point(right, targetCenterY);
+
+  for (let step = 0; step <= MAX_ROUTE_SEARCH_ATTEMPTS; step++) {
+    for (const channelX of step ? [ middle - step * ROUTING_MARGIN, middle + step * ROUTING_MARGIN ] : [ middle ]) {
+      if (channelX < left + ROUTING_MARGIN || channelX > right - ROUTING_MARGIN) {
+        continue;
+      }
+
+      const route = cleanPoints([
+        start,
+        point(channelX, start.y),
+        point(channelX, end.y),
+        end
+      ]);
+
+      if (router.isClear(route)) {
+        return route;
+      }
+    }
   }
 
   return null;

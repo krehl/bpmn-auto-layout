@@ -400,6 +400,11 @@ A segment is legal when it:
 - does not properly cross an allocated edge;
 - does not create a forbidden positive-length overlap.
 
+One exception favours a straight line: a forward flow between vertically
+aligned ports whose direct segment is blocked only by allocated edges it would
+cross at right angles takes that segment, instead of a detour that threads
+between those edges.
+
 Shared endpoints, endpoint touches, and intentional shared endpoint channels
 are not proper crossings. Channels may be shared regardless of whether
 connections enter or leave their common endpoint.
@@ -493,8 +498,10 @@ Before serialization, finalization enforces these endpoint contracts:
 - Boundary handlers leave the event's top or bottom center through a vertical
   stub and approach their target through a facing side.
 - Clear three-point sequence-flow elbows are centered on shape sides.
-  Obstructed cross-band elbows try the facing gap, transposed sides, and then
-  global routing.
+  Obstructed cross-band elbows try the facing gap, transposed sides, a side
+  channel (leave the source's right side, change bands in a free vertical
+  channel between the shapes, tried from the middle of the gap outwards, and
+  enter the target's left side), and then global routing.
 
 Crossing-free candidates are preferred, but an unavoidable edge crossing never
 permits ambiguous corner docking.
