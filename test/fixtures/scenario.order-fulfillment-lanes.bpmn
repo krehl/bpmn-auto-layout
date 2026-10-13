@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_Fulfill" isExecutable="true">
+    <bpmn:documentation>Process-level lanes with a parallel check across lanes, an exclusive split with an end event and a cross-lane task, a value decision with a bypass, a collapsed sub-process in another lane, and an event-based gateway with message and timer branches. Some end events and a catch event belong to no lane. The layout should keep lanes compact, place unassigned nodes next to their neighbours, and keep branch edges and labels apart.</bpmn:documentation>
+    <bpmn:laneSet id="Lanes">
+      <bpmn:lane id="Lane_Clerk" name="Order desk">
+        <bpmn:flowNodeRef>Start</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>EnterOrder</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ValidGW</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>RejectData</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>SplitCheck</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>JoinCheck</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>OutcomeGW</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ValueGW</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Approve</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ApproveGW</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Rejected</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>MergeApprove</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>WaitGW</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Wait24h</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Escalate</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>CancelPick</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ConfirmedEnd</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Picker" name="Warehouse">
+        <bpmn:flowNodeRef>CheckStock</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Fulfill</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ShippedEnd</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Lead" name="Team lead">
+        <bpmn:flowNodeRef>CreditCheck</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>CreditFail</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="Start" name="Order received">
+      <bpmn:outgoing>F_start</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="EnterOrder" name="Verify order data">
+      <bpmn:incoming>F_start</bpmn:incoming>
+      <bpmn:outgoing>F_enter</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="ValidGW" name="Order data valid?">
+      <bpmn:incoming>F_enter</bpmn:incoming>
+      <bpmn:outgoing>F_validNo</bpmn:outgoing>
+      <bpmn:outgoing>F_validYes</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="RejectData" name="Order discarded (invalid data)">
+      <bpmn:incoming>F_validNo</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:parallelGateway id="SplitCheck" name="Parallel checks">
+      <bpmn:incoming>F_validYes</bpmn:incoming>
+      <bpmn:outgoing>F_toCredit</bpmn:outgoing>
+      <bpmn:outgoing>F_toStock</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:parallelGateway id="JoinCheck" name="Checks done">
+      <bpmn:incoming>F_credit</bpmn:incoming>
+      <bpmn:incoming>F_stockOut</bpmn:incoming>
+      <bpmn:outgoing>F_join</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:userTask id="CreditCheck" name="Check credit rating">
+      <bpmn:incoming>F_toCredit</bpmn:incoming>
+      <bpmn:outgoing>F_credit</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:scriptTask id="CheckStock" name="Check stock" scriptFormat="javascript">
+      <bpmn:incoming>F_toStock</bpmn:incoming>
+      <bpmn:outgoing>F_stockOut</bpmn:outgoing>
+      <bpmn:script>// check stock</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:exclusiveGateway id="OutcomeGW" name="Check outcome?">
+      <bpmn:incoming>F_join</bpmn:incoming>
+      <bpmn:outgoing>F_outCredit</bpmn:outgoing>
+      <bpmn:outgoing>F_outStock</bpmn:outgoing>
+      <bpmn:outgoing>F_outOk</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="CreditFail" name="Prepare rejection letter">
+      <bpmn:incoming>F_outCredit</bpmn:incoming>
+      <bpmn:outgoing>F_creditFail</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="CreditFailEnd" name="Order rejected (credit)">
+      <bpmn:incoming>F_creditFail</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="OutOfStockEnd" name="Order on backorder">
+      <bpmn:incoming>F_outStock</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:exclusiveGateway id="ValueGW" name="Order value?">
+      <bpmn:incoming>F_outOk</bpmn:incoming>
+      <bpmn:outgoing>F_big</bpmn:outgoing>
+      <bpmn:outgoing>F_small</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="Approve" name="Approve order">
+      <bpmn:incoming>F_big</bpmn:incoming>
+      <bpmn:outgoing>F_approve</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="ApproveGW" name="Approved?">
+      <bpmn:incoming>F_approve</bpmn:incoming>
+      <bpmn:outgoing>F_approveYes</bpmn:outgoing>
+      <bpmn:outgoing>F_approveNo</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="Rejected" name="Order rejected (not approved)">
+      <bpmn:incoming>F_approveNo</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:exclusiveGateway id="MergeApprove" name="Merge">
+      <bpmn:incoming>F_small</bpmn:incoming>
+      <bpmn:incoming>F_approveYes</bpmn:incoming>
+      <bpmn:outgoing>F_merge</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:subProcess id="Fulfill" name="Pick, check and pack">
+      <bpmn:incoming>F_merge</bpmn:incoming>
+      <bpmn:outgoing>F_fulfill</bpmn:outgoing>
+      <bpmn:startEvent id="FStart" name="Pick started">
+        <bpmn:outgoing>F_f1</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:userTask id="PickItems" name="Pick items">
+        <bpmn:incoming>F_f1</bpmn:incoming>
+        <bpmn:incoming>F_f5</bpmn:incoming>
+        <bpmn:outgoing>F_f2</bpmn:outgoing>
+      </bpmn:userTask>
+      <bpmn:userTask id="QC" name="Quality check picked items">
+        <bpmn:incoming>F_f2</bpmn:incoming>
+        <bpmn:outgoing>F_f3</bpmn:outgoing>
+      </bpmn:userTask>
+      <bpmn:exclusiveGateway id="QCGW" name="QC passed?">
+        <bpmn:incoming>F_f3</bpmn:incoming>
+        <bpmn:outgoing>F_f4</bpmn:outgoing>
+        <bpmn:outgoing>F_f5</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+      <bpmn:task id="Pack" name="Pack order">
+        <bpmn:incoming>F_f4</bpmn:incoming>
+        <bpmn:outgoing>F_f6</bpmn:outgoing>
+      </bpmn:task>
+      <bpmn:endEvent id="FEnd" name="Order packed">
+        <bpmn:incoming>F_f6</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:sequenceFlow id="F_f1" sourceRef="FStart" targetRef="PickItems" />
+      <bpmn:sequenceFlow id="F_f2" sourceRef="PickItems" targetRef="QC" />
+      <bpmn:sequenceFlow id="F_f3" sourceRef="QC" targetRef="QCGW" />
+      <bpmn:sequenceFlow id="F_f4" name="Yes" sourceRef="QCGW" targetRef="Pack" />
+      <bpmn:sequenceFlow id="F_f5" name="No — re-pick" sourceRef="QCGW" targetRef="PickItems" />
+      <bpmn:sequenceFlow id="F_f6" sourceRef="Pack" targetRef="FEnd" />
+    </bpmn:subProcess>
+    <bpmn:eventBasedGateway id="WaitGW" name="Await outcome">
+      <bpmn:incoming>F_fulfill</bpmn:incoming>
+      <bpmn:outgoing>F_waitMsg</bpmn:outgoing>
+      <bpmn:outgoing>F_waitTimer</bpmn:outgoing>
+    </bpmn:eventBasedGateway>
+    <bpmn:intermediateCatchEvent id="Confirmed" name="Delivery confirmed">
+      <bpmn:incoming>F_waitMsg</bpmn:incoming>
+      <bpmn:outgoing>F_confirmed</bpmn:outgoing>
+      <bpmn:messageEventDefinition />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:intermediateCatchEvent id="Wait24h" name="24h timer expires">
+      <bpmn:incoming>F_waitTimer</bpmn:incoming>
+      <bpmn:outgoing>F_timer</bpmn:outgoing>
+      <bpmn:timerEventDefinition>
+        <bpmn:timeDuration>PT24H</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:intermediateCatchEvent>
+    <bpmn:userTask id="Escalate" name="Escalate unconfirmed shipment">
+      <bpmn:incoming>F_timer</bpmn:incoming>
+      <bpmn:outgoing>F_escalate</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:task id="CancelPick" name="Cancel / re-plan shipment">
+      <bpmn:incoming>F_escalate</bpmn:incoming>
+      <bpmn:outgoing>F_cancel</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="ShippedEnd" name="Order shipped">
+      <bpmn:incoming>F_confirmed</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="ConfirmedEnd" name="Shipment escalated / re-planned">
+      <bpmn:incoming>F_cancel</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="F_start" sourceRef="Start" targetRef="EnterOrder" />
+    <bpmn:sequenceFlow id="F_enter" sourceRef="EnterOrder" targetRef="ValidGW" />
+    <bpmn:sequenceFlow id="F_validNo" name="No" sourceRef="ValidGW" targetRef="RejectData" />
+    <bpmn:sequenceFlow id="F_validYes" name="Yes" sourceRef="ValidGW" targetRef="SplitCheck" />
+    <bpmn:sequenceFlow id="F_toCredit" sourceRef="SplitCheck" targetRef="CreditCheck" />
+    <bpmn:sequenceFlow id="F_toStock" sourceRef="SplitCheck" targetRef="CheckStock" />
+    <bpmn:sequenceFlow id="F_credit" sourceRef="CreditCheck" targetRef="JoinCheck" />
+    <bpmn:sequenceFlow id="F_stockOut" sourceRef="CheckStock" targetRef="JoinCheck" />
+    <bpmn:sequenceFlow id="F_join" sourceRef="JoinCheck" targetRef="OutcomeGW" />
+    <bpmn:sequenceFlow id="F_outCredit" name="Credit failed" sourceRef="OutcomeGW" targetRef="CreditFail" />
+    <bpmn:sequenceFlow id="F_outStock" name="Out of stock" sourceRef="OutcomeGW" targetRef="OutOfStockEnd" />
+    <bpmn:sequenceFlow id="F_outOk" name="OK" sourceRef="OutcomeGW" targetRef="ValueGW" />
+    <bpmn:sequenceFlow id="F_creditFail" sourceRef="CreditFail" targetRef="CreditFailEnd" />
+    <bpmn:sequenceFlow id="F_big" name="&#62; 10,000" sourceRef="ValueGW" targetRef="Approve" />
+    <bpmn:sequenceFlow id="F_small" name="&#60;= 10,000" sourceRef="ValueGW" targetRef="MergeApprove" />
+    <bpmn:sequenceFlow id="F_approve" sourceRef="Approve" targetRef="ApproveGW" />
+    <bpmn:sequenceFlow id="F_approveYes" name="Yes" sourceRef="ApproveGW" targetRef="MergeApprove" />
+    <bpmn:sequenceFlow id="F_approveNo" name="No" sourceRef="ApproveGW" targetRef="Rejected" />
+    <bpmn:sequenceFlow id="F_merge" sourceRef="MergeApprove" targetRef="Fulfill" />
+    <bpmn:sequenceFlow id="F_fulfill" sourceRef="Fulfill" targetRef="WaitGW" />
+    <bpmn:sequenceFlow id="F_waitMsg" sourceRef="WaitGW" targetRef="Confirmed" />
+    <bpmn:sequenceFlow id="F_waitTimer" sourceRef="WaitGW" targetRef="Wait24h" />
+    <bpmn:sequenceFlow id="F_confirmed" sourceRef="Confirmed" targetRef="ShippedEnd" />
+    <bpmn:sequenceFlow id="F_timer" sourceRef="Wait24h" targetRef="Escalate" />
+    <bpmn:sequenceFlow id="F_escalate" sourceRef="Escalate" targetRef="CancelPick" />
+    <bpmn:sequenceFlow id="F_cancel" sourceRef="CancelPick" targetRef="ConfirmedEnd" />
+  </bpmn:process>
+</bpmn:definitions>

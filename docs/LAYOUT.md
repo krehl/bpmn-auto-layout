@@ -280,9 +280,21 @@ Lanes are horizontal and may be nested. A node occupies its unique deepest
 lane. Redundant membership in an ancestor lane is valid; membership in
 incomparable lanes is not.
 
-Nodes retain their semantic rows inside lanes, and lane bounds expand to contain
-them. Sequence flows may cross any number of sibling lanes. Lane regions are
-traversable; flow-node shapes in intervening lanes remain routing obstacles.
+A flow node that no lane references is laid out in the lane of a neighbour:
+the source of an incoming sequence flow, otherwise the target of an outgoing
+one; forward flows before feedback edges, declaration order breaking ties. The
+assignment repeats until no further node can be placed, so chains follow their
+assigned neighbour. It affects geometry only; nodes without an assigned
+neighbour keep no lane.
+
+Nodes retain the vertical order of their semantic rows inside lanes, and lane
+bounds expand to contain them. Rows that never overlap share one physical row:
+a row's extent covers its nodes and its sequence flows to other nodes of the
+same lane, and a row moves up into an earlier row only when its extent, widened
+by two horizontal gaps, is clear of that row and of every row in between. A row
+therefore never passes a row it overlaps. Sequence flows may cross any number
+of sibling lanes. Lane regions are traversable; flow-node shapes in intervening
+lanes remain routing obstacles.
 
 ### Artifacts
 

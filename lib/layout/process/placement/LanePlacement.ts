@@ -45,6 +45,7 @@ function getRequired<Value>(value: Value | undefined): Value {
 import { is } from '../../../di/DiUtil.js';
 import { LayoutError } from '../../../LayoutError.js';
 import {
+  HORIZONTAL_GAP,
   LANE_CONTENT_PADDING,
   MIN_LANE_CONTENT_WIDTH,
   MIN_LANE_HEIGHT,
@@ -66,6 +67,9 @@ export function applyLaneMembership(
   }
 
   const memberships = collectLaneMemberships(lanes);
+
+  inferLaneMemberships(records, graphEdges, memberships, policy);
+
   const laneWidth = prepareLaneContent(records);
   const rowsByLane = groupLaneRows(
     lanes,
@@ -116,6 +120,70 @@ function collectLaneMemberships(lanes: Lane[]): LaneMemberships {
   return memberships;
 }
 
+/**
+ * Flow nodes that no lane references are placed in the lane of a neighbour, for
+ * layout only: the source of an incoming flow first, then the target of an
+ * outgoing flow; forward flows before back edges, declaration order breaks
+ * ties. Repeats until no further node can be placed, so chains of unassigned
+ * nodes follow their assigned neighbour. Nodes without an assigned neighbour
+ * keep no lane.
+ */
+function inferLaneMemberships(
+    records: LaneRecord[],
+    graphEdges: FlowEdge[],
+    memberships: LaneMemberships,
+    policy: LaneSemanticPolicy
+): void {
+  const unassigned = records.filter(record => !memberships.has(record.element));
+
+  if (!unassigned.length) {
+    return;
+  }
+
+  const forward = graphEdges.filter(edge => !policy.backEdges.has(edge));
+  const back = graphEdges.filter(edge => policy.backEdges.has(edge));
+  const neighbourLane = (node: FlowNode): Lane | undefined => {
+    for (const edges of [ forward, back ]) {
+      const incoming = edges.find(edge => {
+        return edge.targetRef === node && memberships.has(edge.sourceRef);
+      });
+
+      if (incoming) {
+        return memberships.get(incoming.sourceRef)?.[0];
+      }
+
+      const outgoing = edges.find(edge => {
+        return edge.sourceRef === node && memberships.has(edge.targetRef);
+      });
+
+      if (outgoing) {
+        return memberships.get(outgoing.targetRef)?.[0];
+      }
+    }
+
+    return undefined;
+  };
+
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+
+    for (const record of unassigned) {
+      if (memberships.has(record.element)) {
+        continue;
+      }
+
+      const lane = neighbourLane(record.element);
+
+      if (lane) {
+        memberships.set(record.element, [ lane ]);
+        changed = true;
+      }
+    }
+  }
+}
+
 function prepareLaneContent(records: LaneRecord[]): number {
   const maxRight = Math.max(
     ...records.map(record => record.bounds.x + record.bounds.width),
@@ -155,7 +223,7 @@ function groupLaneRows(
     rowState
   );
 
-  return collectRowsByLane(lanes, records, memberships, rowState);
+  return collectRowsByLane(lanes, records, graphEdges, recordByElement, memberships, rowState);
 }
 
 function createLaneRowState(records: LaneRecord[]): LaneRowState {
@@ -273,6 +341,8 @@ function findLaneRow(
 function collectRowsByLane(
     lanes: Lane[],
     records: LaneRecord[],
+    graphEdges: FlowEdge[],
+    recordByElement: Map<FlowNode, LaneRecord>,
     memberships: LaneMemberships,
     rowState: LaneRowState
 ): RowsByLane {
@@ -296,7 +366,7 @@ function collectRowsByLane(
 
     rowsByLane.set(
       lane,
-      [ ...rows.values() ].sort((rowA, rowB) => {
+      packLaneRows(laneFlowSpans(lane, graphEdges, recordByElement, memberships), [ ...rows.values() ].sort((rowA, rowB) => {
         const centerA = Math.min(...rowA.map(record => {
           return record.bounds.y + record.bounds.height / 2;
         }));
@@ -305,11 +375,113 @@ function collectRowsByLane(
         }));
 
         return centerA - centerB;
-      })
+      }))
     );
   }
 
   return rowsByLane;
+}
+
+/**
+ * Horizontal spans of the flows between nodes of one lane, per node: a row
+ * reaches as far as its flows to other nodes of the lane, so packing never
+ * puts a node between the ends of such a flow.
+ */
+function laneFlowSpans(
+    lane: Lane,
+    graphEdges: FlowEdge[],
+    recordByElement: Map<FlowNode, LaneRecord>,
+    memberships: LaneMemberships
+): Map<LaneRecord, { left: number; right: number }> {
+  const spans = new Map<LaneRecord, { left: number; right: number }>();
+  const widen = (record: LaneRecord, left: number, right: number) => {
+    const span = spans.get(record);
+
+    spans.set(record, span
+      ? { left: Math.min(span.left, left), right: Math.max(span.right, right) }
+      : { left, right });
+  };
+
+  for (const edge of graphEdges) {
+    const source = recordByElement.get(edge.sourceRef);
+    const target = recordByElement.get(edge.targetRef);
+
+    if (
+      !source ||
+      !target ||
+      memberships.get(edge.sourceRef)?.[0] !== lane ||
+      memberships.get(edge.targetRef)?.[0] !== lane
+    ) {
+      continue;
+    }
+
+    const left = Math.min(source.bounds.x, target.bounds.x);
+    const right = Math.max(
+      source.bounds.x + source.bounds.width,
+      target.bounds.x + target.bounds.width
+    );
+
+    widen(source, left, right);
+    widen(target, left, right);
+  }
+
+  return spans;
+}
+
+/** Horizontal clearance between rows that share a lane row: one free rank. */
+const LANE_ROW_PACKING_GAP = 2 * HORIZONTAL_GAP;
+
+/**
+ * Semantic rows of a lane that never overlap horizontally share one physical
+ * row. A row's extent covers its nodes and their flows to other nodes of the
+ * lane. A row moves up into an earlier row only when its extent, widened by
+ * `LANE_ROW_PACKING_GAP`, is clear of that row and of every row in
+ * between, so it never passes a row it overlaps and the vertical order of
+ * overlapping narratives is kept.
+ */
+function packLaneRows(
+    flowSpans: Map<LaneRecord, { left: number; right: number }>,
+    rows: LaneRecord[][]
+): LaneRecord[][] {
+  const extent = (row: LaneRecord[]) => ({
+    left: Math.min(...row.map(record => {
+      return Math.min(record.bounds.x, flowSpans.get(record)?.left ?? Infinity);
+    })),
+    right: Math.max(...row.map(record => {
+      return Math.max(
+        record.bounds.x + record.bounds.width,
+        flowSpans.get(record)?.right ?? -Infinity
+      );
+    }))
+  });
+  const clear = (a: LaneRecord[], b: LaneRecord[]) => {
+    const extentA = extent(a);
+    const extentB = extent(b);
+
+    return extentA.right + LANE_ROW_PACKING_GAP <= extentB.left ||
+      extentB.right + LANE_ROW_PACKING_GAP <= extentA.left;
+  };
+  const packed: LaneRecord[][] = [];
+
+  for (const row of rows) {
+    let target = -1;
+
+    for (let index = packed.length - 1; index >= 0; index--) {
+      if (!clear(packed[index], row)) {
+        break;
+      }
+
+      target = index;
+    }
+
+    if (target === -1) {
+      packed.push([ ...row ]);
+    } else {
+      packed[target].push(...row);
+    }
+  }
+
+  return packed;
 }
 
 function measureLaneHeights(lanes: Lane[], rowsByLane: RowsByLane): LaneHeights {

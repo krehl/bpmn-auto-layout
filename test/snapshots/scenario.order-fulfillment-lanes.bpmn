@@ -1,0 +1,549 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_Fulfill" isExecutable="true">
+    <bpmn:documentation>Process-level lanes with a parallel check across lanes, an exclusive split with an end event and a cross-lane task, a value decision with a bypass, a collapsed sub-process in another lane, and an event-based gateway with message and timer branches. Some end events and a catch event belong to no lane. The layout should keep lanes compact, place unassigned nodes next to their neighbours, and keep branch edges and labels apart.</bpmn:documentation>
+    <bpmn:laneSet id="Lanes">
+      <bpmn:lane id="Lane_Clerk" name="Order desk">
+        <bpmn:flowNodeRef>Start</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>EnterOrder</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ValidGW</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>RejectData</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>SplitCheck</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>JoinCheck</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>OutcomeGW</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ValueGW</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Approve</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ApproveGW</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Rejected</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>MergeApprove</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>WaitGW</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Wait24h</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Escalate</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>CancelPick</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ConfirmedEnd</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Picker" name="Warehouse">
+        <bpmn:flowNodeRef>CheckStock</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Fulfill</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ShippedEnd</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Lead" name="Team lead">
+        <bpmn:flowNodeRef>CreditCheck</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>CreditFail</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="Start" name="Order received">
+      <bpmn:outgoing>F_start</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="EnterOrder" name="Verify order data">
+      <bpmn:incoming>F_start</bpmn:incoming>
+      <bpmn:outgoing>F_enter</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="ValidGW" name="Order data valid?">
+      <bpmn:incoming>F_enter</bpmn:incoming>
+      <bpmn:outgoing>F_validNo</bpmn:outgoing>
+      <bpmn:outgoing>F_validYes</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="RejectData" name="Order discarded (invalid data)">
+      <bpmn:incoming>F_validNo</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:parallelGateway id="SplitCheck" name="Parallel checks">
+      <bpmn:incoming>F_validYes</bpmn:incoming>
+      <bpmn:outgoing>F_toCredit</bpmn:outgoing>
+      <bpmn:outgoing>F_toStock</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:parallelGateway id="JoinCheck" name="Checks done">
+      <bpmn:incoming>F_credit</bpmn:incoming>
+      <bpmn:incoming>F_stockOut</bpmn:incoming>
+      <bpmn:outgoing>F_join</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:userTask id="CreditCheck" name="Check credit rating">
+      <bpmn:incoming>F_toCredit</bpmn:incoming>
+      <bpmn:outgoing>F_credit</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:scriptTask id="CheckStock" name="Check stock" scriptFormat="javascript">
+      <bpmn:incoming>F_toStock</bpmn:incoming>
+      <bpmn:outgoing>F_stockOut</bpmn:outgoing>
+      <bpmn:script>// check stock</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:exclusiveGateway id="OutcomeGW" name="Check outcome?">
+      <bpmn:incoming>F_join</bpmn:incoming>
+      <bpmn:outgoing>F_outCredit</bpmn:outgoing>
+      <bpmn:outgoing>F_outStock</bpmn:outgoing>
+      <bpmn:outgoing>F_outOk</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="CreditFail" name="Prepare rejection letter">
+      <bpmn:incoming>F_outCredit</bpmn:incoming>
+      <bpmn:outgoing>F_creditFail</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="CreditFailEnd" name="Order rejected (credit)">
+      <bpmn:incoming>F_creditFail</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="OutOfStockEnd" name="Order on backorder">
+      <bpmn:incoming>F_outStock</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:exclusiveGateway id="ValueGW" name="Order value?">
+      <bpmn:incoming>F_outOk</bpmn:incoming>
+      <bpmn:outgoing>F_big</bpmn:outgoing>
+      <bpmn:outgoing>F_small</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="Approve" name="Approve order">
+      <bpmn:incoming>F_big</bpmn:incoming>
+      <bpmn:outgoing>F_approve</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="ApproveGW" name="Approved?">
+      <bpmn:incoming>F_approve</bpmn:incoming>
+      <bpmn:outgoing>F_approveYes</bpmn:outgoing>
+      <bpmn:outgoing>F_approveNo</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="Rejected" name="Order rejected (not approved)">
+      <bpmn:incoming>F_approveNo</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:exclusiveGateway id="MergeApprove" name="Merge">
+      <bpmn:incoming>F_small</bpmn:incoming>
+      <bpmn:incoming>F_approveYes</bpmn:incoming>
+      <bpmn:outgoing>F_merge</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:subProcess id="Fulfill" name="Pick, check and pack">
+      <bpmn:incoming>F_merge</bpmn:incoming>
+      <bpmn:outgoing>F_fulfill</bpmn:outgoing>
+      <bpmn:startEvent id="FStart" name="Pick started">
+        <bpmn:outgoing>F_f1</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:userTask id="PickItems" name="Pick items">
+        <bpmn:incoming>F_f1</bpmn:incoming>
+        <bpmn:incoming>F_f5</bpmn:incoming>
+        <bpmn:outgoing>F_f2</bpmn:outgoing>
+      </bpmn:userTask>
+      <bpmn:userTask id="QC" name="Quality check picked items">
+        <bpmn:incoming>F_f2</bpmn:incoming>
+        <bpmn:outgoing>F_f3</bpmn:outgoing>
+      </bpmn:userTask>
+      <bpmn:exclusiveGateway id="QCGW" name="QC passed?">
+        <bpmn:incoming>F_f3</bpmn:incoming>
+        <bpmn:outgoing>F_f4</bpmn:outgoing>
+        <bpmn:outgoing>F_f5</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+      <bpmn:task id="Pack" name="Pack order">
+        <bpmn:incoming>F_f4</bpmn:incoming>
+        <bpmn:outgoing>F_f6</bpmn:outgoing>
+      </bpmn:task>
+      <bpmn:endEvent id="FEnd" name="Order packed">
+        <bpmn:incoming>F_f6</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:sequenceFlow id="F_f1" sourceRef="FStart" targetRef="PickItems" />
+      <bpmn:sequenceFlow id="F_f2" sourceRef="PickItems" targetRef="QC" />
+      <bpmn:sequenceFlow id="F_f3" sourceRef="QC" targetRef="QCGW" />
+      <bpmn:sequenceFlow id="F_f4" name="Yes" sourceRef="QCGW" targetRef="Pack" />
+      <bpmn:sequenceFlow id="F_f5" name="No — re-pick" sourceRef="QCGW" targetRef="PickItems" />
+      <bpmn:sequenceFlow id="F_f6" sourceRef="Pack" targetRef="FEnd" />
+    </bpmn:subProcess>
+    <bpmn:eventBasedGateway id="WaitGW" name="Await outcome">
+      <bpmn:incoming>F_fulfill</bpmn:incoming>
+      <bpmn:outgoing>F_waitMsg</bpmn:outgoing>
+      <bpmn:outgoing>F_waitTimer</bpmn:outgoing>
+    </bpmn:eventBasedGateway>
+    <bpmn:intermediateCatchEvent id="Confirmed" name="Delivery confirmed">
+      <bpmn:incoming>F_waitMsg</bpmn:incoming>
+      <bpmn:outgoing>F_confirmed</bpmn:outgoing>
+      <bpmn:messageEventDefinition />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:intermediateCatchEvent id="Wait24h" name="24h timer expires">
+      <bpmn:incoming>F_waitTimer</bpmn:incoming>
+      <bpmn:outgoing>F_timer</bpmn:outgoing>
+      <bpmn:timerEventDefinition>
+        <bpmn:timeDuration>PT24H</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:intermediateCatchEvent>
+    <bpmn:userTask id="Escalate" name="Escalate unconfirmed shipment">
+      <bpmn:incoming>F_timer</bpmn:incoming>
+      <bpmn:outgoing>F_escalate</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:task id="CancelPick" name="Cancel / re-plan shipment">
+      <bpmn:incoming>F_escalate</bpmn:incoming>
+      <bpmn:outgoing>F_cancel</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="ShippedEnd" name="Order shipped">
+      <bpmn:incoming>F_confirmed</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="ConfirmedEnd" name="Shipment escalated / re-planned">
+      <bpmn:incoming>F_cancel</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="F_start" sourceRef="Start" targetRef="EnterOrder" />
+    <bpmn:sequenceFlow id="F_enter" sourceRef="EnterOrder" targetRef="ValidGW" />
+    <bpmn:sequenceFlow id="F_validNo" name="No" sourceRef="ValidGW" targetRef="RejectData" />
+    <bpmn:sequenceFlow id="F_validYes" name="Yes" sourceRef="ValidGW" targetRef="SplitCheck" />
+    <bpmn:sequenceFlow id="F_toCredit" sourceRef="SplitCheck" targetRef="CreditCheck" />
+    <bpmn:sequenceFlow id="F_toStock" sourceRef="SplitCheck" targetRef="CheckStock" />
+    <bpmn:sequenceFlow id="F_credit" sourceRef="CreditCheck" targetRef="JoinCheck" />
+    <bpmn:sequenceFlow id="F_stockOut" sourceRef="CheckStock" targetRef="JoinCheck" />
+    <bpmn:sequenceFlow id="F_join" sourceRef="JoinCheck" targetRef="OutcomeGW" />
+    <bpmn:sequenceFlow id="F_outCredit" name="Credit failed" sourceRef="OutcomeGW" targetRef="CreditFail" />
+    <bpmn:sequenceFlow id="F_outStock" name="Out of stock" sourceRef="OutcomeGW" targetRef="OutOfStockEnd" />
+    <bpmn:sequenceFlow id="F_outOk" name="OK" sourceRef="OutcomeGW" targetRef="ValueGW" />
+    <bpmn:sequenceFlow id="F_creditFail" sourceRef="CreditFail" targetRef="CreditFailEnd" />
+    <bpmn:sequenceFlow id="F_big" name="&#62; 10,000" sourceRef="ValueGW" targetRef="Approve" />
+    <bpmn:sequenceFlow id="F_small" name="&#60;= 10,000" sourceRef="ValueGW" targetRef="MergeApprove" />
+    <bpmn:sequenceFlow id="F_approve" sourceRef="Approve" targetRef="ApproveGW" />
+    <bpmn:sequenceFlow id="F_approveYes" name="Yes" sourceRef="ApproveGW" targetRef="MergeApprove" />
+    <bpmn:sequenceFlow id="F_approveNo" name="No" sourceRef="ApproveGW" targetRef="Rejected" />
+    <bpmn:sequenceFlow id="F_merge" sourceRef="MergeApprove" targetRef="Fulfill" />
+    <bpmn:sequenceFlow id="F_fulfill" sourceRef="Fulfill" targetRef="WaitGW" />
+    <bpmn:sequenceFlow id="F_waitMsg" sourceRef="WaitGW" targetRef="Confirmed" />
+    <bpmn:sequenceFlow id="F_waitTimer" sourceRef="WaitGW" targetRef="Wait24h" />
+    <bpmn:sequenceFlow id="F_confirmed" sourceRef="Confirmed" targetRef="ShippedEnd" />
+    <bpmn:sequenceFlow id="F_timer" sourceRef="Wait24h" targetRef="Escalate" />
+    <bpmn:sequenceFlow id="F_escalate" sourceRef="Escalate" targetRef="CancelPick" />
+    <bpmn:sequenceFlow id="F_cancel" sourceRef="CancelPick" targetRef="ConfirmedEnd" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Process_Fulfill">
+    <bpmndi:BPMNPlane id="BPMNPlane_Process_Fulfill" bpmnElement="Process_Fulfill">
+      <bpmndi:BPMNShape id="BPMNShape_Lane_Clerk" bpmnElement="Lane_Clerk" isHorizontal="true">
+        <dc:Bounds x="80" y="80" width="2838" height="516" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_Lane_Picker" bpmnElement="Lane_Picker" isHorizontal="true">
+        <dc:Bounds x="80" y="596" width="2838" height="240" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_Lane_Lead" bpmnElement="Lane_Lead" isHorizontal="true">
+        <dc:Bounds x="80" y="836" width="2838" height="240" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_Start" bpmnElement="Start">
+        <dc:Bounds x="120" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="108" y="223" width="60" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_EnterOrder" bpmnElement="EnterOrder">
+        <dc:Bounds x="256" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_ValidGW" bpmnElement="ValidGW" isMarkerVisible="true">
+        <dc:Bounds x="456" y="175" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="445" y="142" width="73" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_RejectData" bpmnElement="RejectData">
+        <dc:Bounds x="613" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="598" y="223" width="67" height="56" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_SplitCheck" bpmnElement="SplitCheck" isMarkerVisible="true">
+        <dc:Bounds x="606" y="335" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="600" y="302" width="62" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_JoinCheck" bpmnElement="JoinCheck" isMarkerVisible="true">
+        <dc:Bounds x="956" y="335" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="941" y="316" width="80" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_CreditCheck" bpmnElement="CreditCheck">
+        <dc:Bounds x="756" y="916" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_CheckStock" bpmnElement="CheckStock">
+        <dc:Bounds x="756" y="676" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_OutcomeGW" bpmnElement="OutcomeGW" isMarkerVisible="true">
+        <dc:Bounds x="1106" y="335" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1161" y="346" width="63" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_CreditFail" bpmnElement="CreditFail">
+        <dc:Bounds x="1256" y="916" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_CreditFailEnd" bpmnElement="CreditFailEnd">
+        <dc:Bounds x="1488" y="938" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1476" y="979" width="60" height="42" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_OutOfStockEnd" bpmnElement="OutOfStockEnd">
+        <dc:Bounds x="1288" y="480" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1273" y="521" width="67" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_ValueGW" bpmnElement="ValueGW" isMarkerVisible="true">
+        <dc:Bounds x="1281" y="175" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1263" y="156" width="87" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_Approve" bpmnElement="Approve">
+        <dc:Bounds x="1456" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_ApproveGW" bpmnElement="ApproveGW" isMarkerVisible="true">
+        <dc:Bounds x="1656" y="175" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1647" y="156" width="69" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_Rejected" bpmnElement="Rejected">
+        <dc:Bounds x="1813" y="342" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1798" y="383" width="67" height="56" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_MergeApprove" bpmnElement="MergeApprove" isMarkerVisible="true">
+        <dc:Bounds x="1806" y="175" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1810" y="156" width="43" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_Fulfill" bpmnElement="Fulfill">
+        <dc:Bounds x="1956" y="676" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_WaitGW" bpmnElement="WaitGW" isMarkerVisible="true">
+        <dc:Bounds x="2156" y="175" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2153" y="142" width="56" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_Confirmed" bpmnElement="Confirmed">
+        <dc:Bounds x="2306" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2289" y="149" width="70" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_Wait24h" bpmnElement="Wait24h">
+        <dc:Bounds x="2306" y="342" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2291" y="383" width="67" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_Escalate" bpmnElement="Escalate">
+        <dc:Bounds x="2442" y="320" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_CancelPick" bpmnElement="CancelPick">
+        <dc:Bounds x="2642" y="320" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_ShippedEnd" bpmnElement="ShippedEnd">
+        <dc:Bounds x="2474" y="698" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2466" y="739" width="53" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_ConfirmedEnd" bpmnElement="ConfirmedEnd">
+        <dc:Bounds x="2842" y="342" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2821" y="383" width="78" height="42" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_start" bpmnElement="F_start">
+        <di:waypoint x="156" y="200" />
+        <di:waypoint x="256" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_enter" bpmnElement="F_enter">
+        <di:waypoint x="356" y="200" />
+        <di:waypoint x="456" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_validNo" bpmnElement="F_validNo">
+        <di:waypoint x="506" y="200" />
+        <di:waypoint x="613" y="200" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="550" y="178" width="20" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_toCredit" bpmnElement="F_toCredit">
+        <di:waypoint x="631" y="385" />
+        <di:waypoint x="631" y="956" />
+        <di:waypoint x="756" y="956" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_credit" bpmnElement="F_credit">
+        <di:waypoint x="856" y="956" />
+        <di:waypoint x="981" y="956" />
+        <di:waypoint x="981" y="385" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_join" bpmnElement="F_join">
+        <di:waypoint x="1006" y="360" />
+        <di:waypoint x="1106" y="360" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_outCredit" bpmnElement="F_outCredit">
+        <di:waypoint x="1131" y="385" />
+        <di:waypoint x="1131" y="956" />
+        <di:waypoint x="1256" y="956" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1136" y="713" width="48" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_creditFail" bpmnElement="F_creditFail">
+        <di:waypoint x="1356" y="956" />
+        <di:waypoint x="1488" y="956" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_big" bpmnElement="F_big">
+        <di:waypoint x="1331" y="200" />
+        <di:waypoint x="1456" y="200" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1365" y="178" width="57" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_approve" bpmnElement="F_approve">
+        <di:waypoint x="1556" y="200" />
+        <di:waypoint x="1656" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_approveYes" bpmnElement="F_approveYes">
+        <di:waypoint x="1706" y="200" />
+        <di:waypoint x="1806" y="200" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1743" y="178" width="27" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_merge" bpmnElement="F_merge">
+        <di:waypoint x="1856" y="200" />
+        <di:waypoint x="2006" y="200" />
+        <di:waypoint x="2006" y="676" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_fulfill" bpmnElement="F_fulfill">
+        <di:waypoint x="2056" y="716" />
+        <di:waypoint x="2181" y="716" />
+        <di:waypoint x="2181" y="225" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_waitMsg" bpmnElement="F_waitMsg">
+        <di:waypoint x="2206" y="200" />
+        <di:waypoint x="2306" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_confirmed" bpmnElement="F_confirmed">
+        <di:waypoint x="2342" y="200" />
+        <di:waypoint x="2408" y="200" />
+        <di:waypoint x="2408" y="716" />
+        <di:waypoint x="2474" y="716" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_validYes" bpmnElement="F_validYes">
+        <di:waypoint x="481" y="225" />
+        <di:waypoint x="481" y="360" />
+        <di:waypoint x="606" y="360" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="486" y="286" width="27" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_toStock" bpmnElement="F_toStock">
+        <di:waypoint x="631" y="385" />
+        <di:waypoint x="631" y="716" />
+        <di:waypoint x="756" y="716" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_outStock" bpmnElement="F_outStock">
+        <di:waypoint x="1131" y="385" />
+        <di:waypoint x="1131" y="498" />
+        <di:waypoint x="1288" y="498" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1168" y="476" width="84" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_outOk" bpmnElement="F_outOk">
+        <di:waypoint x="1131" y="335" />
+        <di:waypoint x="1131" y="200" />
+        <di:waypoint x="1281" y="200" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1136" y="261" width="22" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_approveNo" bpmnElement="F_approveNo">
+        <di:waypoint x="1681" y="225" />
+        <di:waypoint x="1681" y="360" />
+        <di:waypoint x="1813" y="360" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1686" y="286" width="20" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_waitTimer" bpmnElement="F_waitTimer">
+        <di:waypoint x="2206" y="200" />
+        <di:waypoint x="2286" y="200" />
+        <di:waypoint x="2286" y="360" />
+        <di:waypoint x="2306" y="360" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_stockOut" bpmnElement="F_stockOut">
+        <di:waypoint x="856" y="716" />
+        <di:waypoint x="981" y="716" />
+        <di:waypoint x="981" y="385" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_small" bpmnElement="F_small">
+        <di:waypoint x="1306" y="225" />
+        <di:waypoint x="1306" y="260" />
+        <di:waypoint x="1831" y="260" />
+        <di:waypoint x="1831" y="225" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1537" y="268" width="64" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_timer" bpmnElement="F_timer">
+        <di:waypoint x="2342" y="360" />
+        <di:waypoint x="2442" y="360" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_escalate" bpmnElement="F_escalate">
+        <di:waypoint x="2542" y="360" />
+        <di:waypoint x="2642" y="360" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_cancel" bpmnElement="F_cancel">
+        <di:waypoint x="2742" y="360" />
+        <di:waypoint x="2842" y="360" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Fulfill">
+    <bpmndi:BPMNPlane id="BPMNPlane_Fulfill" bpmnElement="Fulfill">
+      <bpmndi:BPMNShape id="BPMNShape_FStart" bpmnElement="FStart">
+        <dc:Bounds x="80" y="102" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="55" y="143" width="87" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_PickItems" bpmnElement="PickItems">
+        <dc:Bounds x="216" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_QC" bpmnElement="QC">
+        <dc:Bounds x="416" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_QCGW" bpmnElement="QCGW" isMarkerVisible="true">
+        <dc:Bounds x="616" y="95" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="604" y="76" width="75" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_Pack" bpmnElement="Pack">
+        <dc:Bounds x="766" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_FEnd" bpmnElement="FEnd">
+        <dc:Bounds x="966" y="102" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="941" y="143" width="87" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_f1" bpmnElement="F_f1">
+        <di:waypoint x="116" y="120" />
+        <di:waypoint x="216" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_f2" bpmnElement="F_f2">
+        <di:waypoint x="316" y="120" />
+        <di:waypoint x="416" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_f3" bpmnElement="F_f3">
+        <di:waypoint x="516" y="120" />
+        <di:waypoint x="616" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_f4" bpmnElement="F_f4">
+        <di:waypoint x="666" y="120" />
+        <di:waypoint x="766" y="120" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="703" y="98" width="27" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_f6" bpmnElement="F_f6">
+        <di:waypoint x="866" y="120" />
+        <di:waypoint x="966" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_F_f5" bpmnElement="F_f5">
+        <di:waypoint x="641" y="145" />
+        <di:waypoint x="641" y="180" />
+        <di:waypoint x="266" y="180" />
+        <di:waypoint x="266" y="160" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="412" y="188" width="84" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
